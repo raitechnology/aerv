@@ -153,6 +153,7 @@ all_dlls    :=
 all_depends :=
 gen_files   :=
 
+server_defines    := -DAERV_VER=$(ver_build)
 aerv_server_files := server
 aerv_server_objs  := $(addprefix $(objd)/, $(addsuffix .o, $(aerv_server_files)))
 aerv_server_deps  := $(addprefix $(dependd)/, $(addsuffix .d, $(aerv_server_files)))
