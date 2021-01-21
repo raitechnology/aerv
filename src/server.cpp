@@ -20,48 +20,57 @@ struct Args : public MainLoopVars { /* argv[] parsed args */
   Args() : rv_port( 0 ) {}
 };
 
-struct MyListener : public EvRvListen {
-  EvAeron * aeron_sv;
+struct MyListener : public EvRvListen, public EvAeron {
   char      aeron_pub[ 128 ],
             aeron_sub[ 128 ];
-  MyListener( kv::EvPoll &p ) : EvRvListen( p ), aeron_sv( 0 ) {}
+  void * operator new( size_t, void *ptr ) { return ptr; }
+  MyListener( kv::EvPoll &p ) : EvRvListen( p ), EvAeron( p ) {}
 
   virtual int start_host( void ) noexcept final {
-    if ( this->aeron_sv == NULL ) {
-      this->aeron_sv = EvAeron::create_aeron( this->poll );
-      if ( this->aeron_sv == NULL )
-        return -1;
-    }
     uint8_t * rcv = (uint8_t *) (void *) &this->mcast.recv_ip[ 0 ],
             * snd = (uint8_t *) (void *) &this->mcast.send_ip,
             * hst = (uint8_t *) (void *) &this->mcast.host_ip;
+    if ( hst[ 0 ] != 127 ) {
+      if ( this->EvAeron::context != NULL ) {
+        fprintf( stderr, "Not shutdown yet!\n" );
+        return -1;
+      }
+      snprintf( this->aeron_sub, sizeof( this->aeron_sub ),
+        "aeron:udp?endpoint=%u.%u.%u.%u:%s|interface=%u.%u.%u.%u",
+        rcv[ 0 ], rcv[ 1 ], rcv[ 2 ], rcv[ 3 ], this->service,
+        hst[ 0 ], hst[ 1 ], hst[ 2 ], hst[ 3 ] );
+      snprintf( this->aeron_pub, sizeof( this->aeron_pub ),
+        "aeron:udp?endpoint=%u.%u.%u.%u:%s|interface=%u.%u.%u.%u",
+        snd[ 0 ], snd[ 1 ], snd[ 2 ], snd[ 3 ], this->service,
+        hst[ 0 ], hst[ 1 ], hst[ 2 ], hst[ 3 ] );
 
-    ::snprintf( this->aeron_sub, sizeof( this->aeron_sub ),
-      "aeron:udp?endpoint=%u.%u.%u.%u:%s|interface=%u.%u.%u.%u",
-      rcv[ 0 ], rcv[ 1 ], rcv[ 2 ], rcv[ 3 ], this->service,
-      hst[ 0 ], hst[ 1 ], hst[ 2 ], hst[ 3 ] );
-    ::snprintf( this->aeron_pub, sizeof( this->aeron_pub ),
-      "aeron:udp?endpoint=%u.%u.%u.%u:%s|interface=%u.%u.%u.%u",
-      snd[ 0 ], snd[ 1 ], snd[ 2 ], snd[ 3 ], this->service,
-      hst[ 0 ], hst[ 1 ], hst[ 2 ], hst[ 3 ] );
+      printf( "start_network:        service %.*s, \"%.*s\"\n",
+              (int) this->service_len, this->service, (int) this->network_len,
+              this->network );
+      printf( "aeron_sub:            %s\n", this->aeron_sub );
+      printf( "aeron_pub:            %s\n", this->aeron_pub );
 
-    printf( "start_network:        service %.*s, \"%.*s\"\n",
-            (int) this->service_len, this->service, (int) this->network_len,
-            this->network );
-    printf( "aeron_sub:            %s\n", this->aeron_sub );
-    printf( "aeron_pub:            %s\n", this->aeron_pub );
-
-    if ( ! this->aeron_sv->start_aeron( this->aeron_pub, 1001,
-                                        this->aeron_sub, 1001 ) )
-      return -1;
+      AeronSvcId id;
+      id.pub_if  = this->mcast.host_ip;
+      id.sub_if  = this->mcast.host_ip;
+      id.pub_svc = this->service_port;
+      id.sub_svc = this->service_port;
+      if ( ! this->EvAeron::start_aeron( &id, this->aeron_pub, 1001,
+                                         this->aeron_sub, 1001 ) )
+        return -1;
+      return 0;
+    }
     return this->EvRvListen::start_host();
+  }
+  virtual void on_connect( void ) noexcept final {
+    this->EvRvListen::start_host();
   }
   virtual int stop_host( void ) noexcept final {
     printf( "stop_network:         service %.*s, \"%.*s\"\n",
             (int) this->service_len, this->service, (int) this->network_len,
             this->network );
     this->EvRvListen::stop_host();
-    this->aeron_sv->idle_push( EV_SHUTDOWN );
+    this->EvAeron::do_shutdown();
     return 0;
   }
 };
