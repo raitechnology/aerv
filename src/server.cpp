@@ -10,6 +10,8 @@
 #include <sassrv/ev_rv.h>
 #include <raikv/mainloop.h>
 
+extern "C" const char *aeron_version_full();
+
 using namespace rai;
 using namespace aekv;
 using namespace sassrv;
@@ -86,6 +88,7 @@ struct Loop : public MainLoop<Args> {
                                this->r.tcp_opts );
   }
   bool init( void ) {
+    printf( "aeron_version_full:   %s\n", aeron_version_full() );
     printf( "aerv_version:         " kv_stringify( AERV_VER ) "\n" );
     printf( "rv_daemon:            %d\n", this->r.rv_port );
     return this->rv_init();
